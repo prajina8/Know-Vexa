@@ -24,7 +24,7 @@ const ICONS: Record<ToastType, typeof CheckCircle2> = {
 const STYLES: Record<ToastType, string> = {
   success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300',
   error: 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
-  info: 'border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300',
+  info: 'border-terracotta-200 bg-terracotta-50 text-terracotta-800 dark:border-terracotta-900 dark:bg-terracotta-950 dark:text-terracotta-300',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

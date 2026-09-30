@@ -11,10 +11,10 @@ const FEATURES = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-cream dark:bg-espresso">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white font-display font-bold">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-terracotta-600 text-ivory font-display font-bold">
             S
           </div>
           <span className="font-display text-lg font-bold">StudyForge</span>
@@ -30,10 +30,10 @@ export default function LandingPage() {
       </header>
 
       <section className="mx-auto max-w-4xl px-6 py-20 text-center">
-        <h1 className="font-display text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-6xl">
-          Your study materials, <span className="text-brand-600">turned into mastery.</span>
+        <h1 className="font-display text-4xl font-extrabold tracking-tight text-espresso dark:text-ivory sm:text-6xl">
+          Your study materials, <span className="text-terracotta-600 dark:text-terracotta-400">turned into mastery.</span>
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-400">
+        <p className="mx-auto mt-6 max-w-2xl text-lg text-terracotta-600 dark:text-terracotta-300">
           Upload notes, generate quizzes and flashcards, chat with your documents, and get a
           personalized plan built from your actual performance data.
         </p>
@@ -48,11 +48,11 @@ export default function LandingPage() {
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="card p-6">
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-400">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-terracotta-50 text-terracotta-600 dark:bg-terracotta-950 dark:text-terracotta-400">
                 <Icon size={20} />
               </div>
               <h3 className="font-display font-semibold">{title}</h3>
-              <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{desc}</p>
+              <p className="mt-1.5 text-sm text-terracotta-500 dark:text-terracotta-300">{desc}</p>
             </div>
           ))}
         </div>
