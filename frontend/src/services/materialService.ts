@@ -9,6 +9,9 @@ export const materialService = {
 
   get: (id: string) => api.get<ApiResponse<Material>>(`/materials/${id}`).then((r) => r.data.data),
 
+  file: (id: string) =>
+    api.get(`/materials/${id}/file`, { responseType: 'blob' }).then((r) => r.data as Blob),
+
   upload: (file: File, subjectId: string, title: string, onProgress?: (pct: number) => void) => {
     const form = new FormData();
     form.append('file', file);

@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
+
 import { env } from './config/env';
 import routes from './routes';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler';
@@ -27,7 +27,6 @@ export function createApp() {
     res.json({ success: true, message: 'AI Study Companion API is running', env: env.nodeEnv });
   });
 
-  app.use('/uploads', express.static(path.resolve(process.cwd(), env.uploadDir)));
 
   app.use('/api', routes);
 

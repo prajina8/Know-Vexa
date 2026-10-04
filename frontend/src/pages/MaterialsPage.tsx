@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { PdfViewer } from '../components/PdfViewer';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, FileText, Trash2, AlertTriangle, X } from 'lucide-react';

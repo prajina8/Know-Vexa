@@ -30,6 +30,11 @@ import {
 } from '../services/analyticsService';
 import { registerStudyActivity } from '../services/gamificationService';
 
+// Maximum characters of source text sent to the AI model.
+const MAX_SOURCE_CHARS = 60000;
+// Minimum characters needed for the AI to produce anything useful.
+const MIN_SOURCE_CHARS = 100;
+
 async function getOwnedMaterial(materialId: string, userId: string) {
   const material = await Material.findById(materialId).select('+extractedText');
   if (!material) throw notFound('Material');
@@ -40,12 +45,59 @@ async function getOwnedMaterial(materialId: string, userId: string) {
   return material;
 }
 
+/**
+ * Builds the text sent to the AI for quiz / flashcard generation.
+ * - Uses one material if materialId is given, otherwise all ready materials in the subject.
+ * - Always trims to MAX_SOURCE_CHARS.
+ * - Throws a clear 400 error if there is no readable text (e.g. scanned PDF).
+ */
+async function buildSourceText(
+  subjectId: Types.ObjectId,
+  userId: string,
+  materialId: string | undefined,
+  purpose: string,
+): Promise<string> {
+  let sourceText = '';
+
+  if (materialId) {
+    const material = await getOwnedMaterial(materialId, userId);
+    sourceText = material.extractedText || '';
+  } else {
+    const materials = await Material.find({ subject: subjectId, status: 'ready' }).select(
+      '+extractedText',
+    );
+    if (materials.length === 0) {
+      throw new AppError(`No ready materials found for this subject to generate ${purpose} from`, 400);
+    }
+    sourceText = materials.map((m) => m.extractedText || '').join('\n\n');
+  }
+
+  sourceText = sourceText.trim().slice(0, MAX_SOURCE_CHARS);
+
+  if (sourceText.length < MIN_SOURCE_CHARS) {
+    throw new AppError(
+      'This material has no readable text. It may be a scanned PDF or an image-only document.',
+      400,
+    );
+  }
+
+  return sourceText;
+}
+
 export const summarize = asyncHandler(async (req: AuthedRequest, res: Response) => {
   const { materialId, length } = req.body;
   const material = await getOwnedMaterial(materialId, req.user!.userId);
 
+  const text = (material.extractedText || '').trim().slice(0, MAX_SOURCE_CHARS);
+  if (text.length < MIN_SOURCE_CHARS) {
+    throw new AppError(
+      'This material has no readable text. It may be a scanned PDF or an image-only document.',
+      400,
+    );
+  }
+
   const ai = getAIProvider();
-  const { system, prompt } = summaryPrompt(material.extractedText || '', length);
+  const { system, prompt } = summaryPrompt(text, length);
   const result = await ai.completeJSON<AISummaryResult>({ system, prompt, maxTokens: 3000 });
 
   await StudySession.create({
@@ -126,19 +178,7 @@ export const generateQuiz = asyncHandler(async (req: AuthedRequest, res: Respons
   const subject = await Subject.findOne({ _id: subjectId, user: req.user!.userId });
   if (!subject) throw notFound('Subject');
 
-  let sourceText = '';
-  if (materialId) {
-    const material = await getOwnedMaterial(materialId, req.user!.userId);
-    sourceText = material.extractedText || '';
-  } else {
-    const materials = await Material.find({ subject: subject._id, status: 'ready' }).select(
-      '+extractedText',
-    );
-    if (materials.length === 0) {
-      throw new AppError('No ready materials found for this subject to generate a quiz from', 400);
-    }
-    sourceText = materials.map((m) => m.extractedText).join('\n\n').slice(0, 60000);
-  }
+  const sourceText = await buildSourceText(subject._id, req.user!.userId, materialId, 'a quiz');
 
   const ai = getAIProvider();
   const { system, prompt } = quizGenPrompt({
@@ -148,23 +188,41 @@ export const generateQuiz = asyncHandler(async (req: AuthedRequest, res: Respons
     difficulty,
     questionTypes,
   });
-  const result = await ai.completeJSON<{ questions: AIQuizQuestion[] }>({
-    system,
-    prompt,
-    maxTokens: 4000,
-  });
 
-  const quiz = await Quiz.create({
-    user: req.user!.userId,
-    subject: subject._id,
-    material: materialId || undefined,
-    title: topic ? `${subject.name}: ${topic}` : `${subject.name} Quiz`,
-    topic,
-    difficulty,
-    questionTypes,
-    questions: result.questions,
-    timeLimitMinutes,
-  });
+  let result: { questions: AIQuizQuestion[] };
+  try {
+    result = await ai.completeJSON<{ questions: AIQuizQuestion[] }>({
+      system,
+      prompt,
+      maxTokens: 4000,
+    });
+  } catch (err) {
+    console.error('[generateQuiz] AI call failed:', err);
+    throw new AppError('Could not generate the quiz right now. Please try again.', 502);
+  }
+
+  if (!result || !Array.isArray(result.questions) || result.questions.length === 0) {
+    console.error('[generateQuiz] Unexpected AI response shape:', JSON.stringify(result)?.slice(0, 500));
+    throw new AppError('The AI returned an invalid quiz. Please try again.', 502);
+  }
+
+  let quiz;
+  try {
+    quiz = await Quiz.create({
+      user: req.user!.userId,
+      subject: subject._id,
+      material: materialId || undefined,
+      title: topic ? `${subject.name}: ${topic}` : `${subject.name} Quiz`,
+      topic,
+      difficulty,
+      questionTypes,
+      questions: result.questions,
+      timeLimitMinutes,
+    });
+  } catch (err) {
+    console.error('[generateQuiz] Saving quiz failed (check schema vs AI output):', err);
+    throw new AppError('The generated quiz could not be saved. Please try again.', 500);
+  }
 
   res.status(201).json({ success: true, data: quiz });
 });
@@ -175,40 +233,58 @@ export const generateFlashcards = asyncHandler(async (req: AuthedRequest, res: R
   const subject = await Subject.findOne({ _id: subjectId, user: req.user!.userId });
   if (!subject) throw notFound('Subject');
 
-  let sourceText = '';
-  if (materialId) {
-    const material = await getOwnedMaterial(materialId, req.user!.userId);
-    sourceText = material.extractedText || '';
-  } else {
-    const materials = await Material.find({ subject: subject._id, status: 'ready' }).select(
-      '+extractedText',
-    );
-    if (materials.length === 0) {
-      throw new AppError('No ready materials found for this subject to generate flashcards from', 400);
-    }
-    sourceText = materials.map((m) => m.extractedText).join('\n\n').slice(0, 60000);
-  }
+  const sourceText = await buildSourceText(subject._id, req.user!.userId, materialId, 'flashcards');
 
   const ai = getAIProvider();
   const { system, prompt } = flashcardGenPrompt({ text: sourceText, topic, numCards });
-  const result = await ai.completeJSON<{ flashcards: AIFlashcard[] }>({
-    system,
-    prompt,
-    maxTokens: 3000,
-  });
 
-  const created = await Flashcard.insertMany(
-    result.flashcards.map((f) => ({
-      user: req.user!.userId,
-      subject: subject._id,
-      material: materialId || undefined,
-      question: f.question,
-      answer: f.answer,
-      topic: f.topic,
-      difficulty: f.difficulty,
-      nextReviewAt: new Date(),
-    })),
+  let result: { flashcards: AIFlashcard[] };
+  try {
+    result = await ai.completeJSON<{ flashcards: AIFlashcard[] }>({
+      system,
+      prompt,
+      maxTokens: 3000,
+    });
+  } catch (err) {
+    console.error('[generateFlashcards] AI call failed:', err);
+    throw new AppError('Could not generate flashcards right now. Please try again.', 502);
+  }
+
+  if (!result || !Array.isArray(result.flashcards)) {
+    console.error(
+      '[generateFlashcards] Unexpected AI response shape:',
+      JSON.stringify(result)?.slice(0, 500),
+    );
+    throw new AppError('The AI returned invalid flashcards. Please try again.', 502);
+  }
+
+  // Drop any card missing a question or answer so one bad card doesn't fail the whole batch.
+  const validCards = result.flashcards.filter(
+    (f) => f && typeof f.question === 'string' && typeof f.answer === 'string' && f.question && f.answer,
   );
+
+  if (validCards.length === 0) {
+    throw new AppError('The AI returned no usable flashcards. Please try again.', 502);
+  }
+
+  let created;
+  try {
+    created = await Flashcard.insertMany(
+      validCards.map((f) => ({
+        user: req.user!.userId,
+        subject: subject._id,
+        material: materialId || undefined,
+        question: f.question,
+        answer: f.answer,
+        topic: f.topic,
+        difficulty: f.difficulty,
+        nextReviewAt: new Date(),
+      })),
+    );
+  } catch (err) {
+    console.error('[generateFlashcards] Saving flashcards failed (check schema vs AI output):', err);
+    throw new AppError('The generated flashcards could not be saved. Please try again.', 500);
+  }
 
   res.status(201).json({ success: true, data: created });
 });
@@ -254,6 +330,10 @@ export const generateStudyPlan = asyncHandler(async (req: AuthedRequest, res: Re
       priority: number;
     }[];
   }>({ system, prompt, maxTokens: 2500 });
+
+  if (!result || !Array.isArray(result.tasks)) {
+    throw new AppError('The AI returned an invalid study plan. Please try again.', 502);
+  }
 
   const tasks = result.tasks
     .filter((t) => subjectByName.has(t.subjectName))

@@ -5,6 +5,7 @@ import {
   uploadMaterial,
   listMaterials,
   getMaterial,
+  streamMaterialFile,
   deleteMaterial,
 } from '../controllers/materialController';
 
@@ -14,6 +15,7 @@ router.use(requireAuth);
 router.post('/upload', uploadPdf.single('file'), uploadMaterial);
 router.get('/', listMaterials);
 router.get('/:id', getMaterial);
+router.get('/:id/file', streamMaterialFile);
 router.delete('/:id', deleteMaterial);
 
 export default router;
