@@ -51,6 +51,10 @@ export class OpenAIProvider implements AIProvider {
     const jsonSystem = `${params.system}\n\nRespond with ONLY valid JSON, no markdown fences.`;
     const raw = await this.complete({ ...params, system: jsonSystem });
     const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
-    return JSON.parse(cleaned) as T;
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch {
+      throw new AppError('OpenAI returned invalid JSON. Please try again.', 502);
+    }
   }
 }

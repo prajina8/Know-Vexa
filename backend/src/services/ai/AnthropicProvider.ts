@@ -10,7 +10,7 @@ export class AnthropicProvider implements AIProvider {
   constructor() {
     if (!env.anthropicApiKey) {
       throw new AppError(
-        'ANTHROPIC_API_KEY is not configured. Set it in server/.env to enable AI features.',
+        'ANTHROPIC_API_KEY is not configured. Set it in backend/.env to enable AI features.',
         500,
       );
     }
